@@ -3,7 +3,7 @@ rcmpd - Controlling MPD (Music Player Daemon) with an IR Remote Control
 
 *rcmpd* is written as a bash script with very little requirements.
 
-It should work on all Linuxes with MPD_ and LIRC_ (tested on a `Raspberry Pi`_ with Volumio_ until now).
+It should work on all Linuxes with MPD_ and LIRC_ (tested on a `Raspberry Pi`_ originally with Volumio_ and now with stock Raspberry Pi OS).
 
 Some documentation is included in the script itself. Much more in the enclosed files:
 
@@ -20,7 +20,7 @@ So the complete infos are available on my *rcmpd* site: http://ziemski.net/rcmpd
 
 
 .. _MPD:          https://www.musicpd.org/
-.. _LIRC:         http://www.lirc.org
+.. _LIRC:         https://www.lirc.org
 .. _Raspberry Pi: https://www.raspberrypi.org
 .. _Volumio:      https://www.volumio.org
 
