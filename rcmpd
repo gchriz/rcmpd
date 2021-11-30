@@ -1,0 +1,1626 @@
+#!/bin/bash
+#
+# rcmpd - Control the MPD with an IR Remote Control
+#         and get optional speech output for infos.
+#         Some playlist handling included.
+#
+#                                           Christian Ziemski 16.03.2014
+#                                                             13.05.2020
+#
+#-------------------------------------------------------------------------
+
+#*************************************************
+# Some help infos - in English as default
+#*************************************************
+
+help_usage()
+{
+  cat <<EOF
+
+${MYSELF} - IR remote controlling the Music Player Daemon MPD.
+With playlist handling and some Text-To-Speech features.
+
+Usage:
+
+  $MYSELF <command> ...     manages a command, e.g. from an infrared RC buttonpress
+
+  $MYSELF --checkinstall    checks some aspects of the install (prerequisites)
+
+  $MYSELF --createlircrc    creates $LIRCRC if not existing
+
+  $MYSELF --restartirexec   restarts irexec after changes on .lircrc
+
+  $MYSELF --showsonginfos   shows the "recorded" infos in '$SONGINFO_FILE'
+
+  $MYSELF --listplaylists   lists all playlists and the contents of current one
+
+  $MYSELF                   without any parameters this usage info
+                            and a short summary of keys is shown
+
+
+EOF
+}
+
+#-------------------------
+
+help_keys()
+{
+  cat <<EOF
+Function overview [Pinnacle_RC1144201]:
+
+  Power        shutdown / cancel delayed shutdown / set sleep timer
+  Mute         mute / unmute
+  Menu         toggle spoken command descriptions on/off
+  TV           speak info: current time
+  EPG          speak info: list available playlists
+  Vol+/-       increase/decrease volume (in 5% steps)
+  Ch+/-        switch to next/previous playlist
+  Pinnacle     speak info: volume and status of "repeat" and "random"
+  A, B, C      load playlist "A", "B", "C"
+  D "?"        speak info: current playlist
+  Back         speak info: current channel/album
+  Loop         toggle "single repeat" on/off
+  Fullscreen   speak info: current track/song
+  Pause        toggle pause/play
+  Play/Stop    start, stop playback / stop currently spoken text
+  Rew/FFwd     seek 30 seconds back/forward
+  Skip+/-      next/previous track (within current playlist)
+  Record       save current song info (title/artist) in '$SONGINFO_FILE'
+  1-9, 0       1st .. 10th track (within current playlist)
+  Cancel C/N   Reset to DEFAULT playlist
+
+  OK           start/stop multiple-key commands
+               (built from A,B,C,D,0-9,POWER,VOL+,VOL-,MENU,EPG,LOOP)
+
+                   * numbers         select track within playlist
+                   * chars/numbers   select playlist 'cn'
+                       - named 'cn' or
+                       - starting with 'cn --' or 'cn ~'
+                   * LOOP            toggle "repeat all" on/off (all = current playlist)
+                   * LOOP D          set random playing on/off
+                   * POWER number    set a sleep timer in minutes
+                   * VOL+ VOL+       set volume to 100%
+                   * VOL+ VOL-       set volume to  50%
+                   * VOL- VOL-       set volume to   0%
+                   * MENU EPG        print playlist on printer
+                   * MENU MENU       print this list of keys
+                   * MENU MENU EPG   print this list of keys and the playlists - double sided
+
+More infos at  https://www.ziemski.net/rcmpd/
+EOF
+}
+
+#*************************************************
+# The same help infos as above, but now in German
+#*************************************************
+
+help_usage_DE()
+{
+  cat <<EOF
+
+${MYSELF} - Steuerung des Music Player Daemon MPD mit einer Infrarot-Fernbedienung.
+Mit Playlist-Funktionen und Sprachausgabe.
+
+Benutzung:
+
+  $MYSELF <command> ...     führt 'command' aus, z.B. von einem Knopf der Fernbedienung
+
+  $MYSELF --checkinstall    prüft einige Voraussetzungen zur Installation
+
+  $MYSELF --createlircrc    erzeugt $LIRCRC falls noch nicht vorhanden
+
+  $MYSELF --restartirexec   startet irexec neu nach Änderungen in .lircrc
+
+  $MYSELF --showsonginfos   zeigt die "aufgezeichneten" Infos aus '$SONGINFO_FILE'
+
+  $MYSELF --listplaylists   listet die Titel der verfügbaren Playlists
+                            und den Inhalt der aktuellen Playlist
+
+  $MYSELF                   ohne Parameter wird diese Hilfe
+                            und eine Übesicht über die Funktionen angezeigt
+
+
+EOF
+}
+
+#-------------------------
+
+help_keys_DE()
+{
+
+  cat <<EOF
+Übersicht über die Funktionen [Pinnacle_RC1144201]:
+
+  Power        Herunterfahren sofort bzw. Setzen von Sleep Timern (s.u.)
+  Mute         Ton an/aus
+  Menu         Ein-/Ausschalten der gesprochenen Befehlsbeschreibungen
+  TV           Sprachausgabe: aktuelle Uhrzeit
+  EPG          Sprachausgabe: Titel der verfügbaren Playlists
+  Vol+/-       Erhöhung/Verringerung der Lautstärke (in 5% Schritten)
+  Ch+/-        zur nächsten/vorherigen Playlist wechseln
+  Pinnacle     Sprachausgabe: Lautstärke und Status von "Wiederholung" und "Zufallsreihenfolge"
+  A, B, C      Lade Playlist "A", "B", "C"
+  D "?"        Sprachausgabe: aktuelle Playlist
+  Back         Sprachausgabe: aktueller/es Kanal/Album
+  Loop         Ein-/Ausschalten der Wiederholung des aktuellen Stückes
+  Fullscreen   Sprachausgabe: aktueller Track/Song
+  Pause        Umschalten zwischen Play/Pause
+  Play/Stop    Starten, Stoppen der Wiedergabe / Stop der aktuellen Sprachausgabe
+  Rew/FFwd     30 Sekunden zurück/vorwärts springen
+  Skip+/-      nächster/vorheriger Track (in aktueller Playlist)
+  Record       speichern von Infos zum aktuellen Song (Title/Interpret) in '$SONGINFO_FILE'
+  1-9, 0       1st .. 10er Track (in aktueller Playlist)
+  Cancel C/N   Rücksetzen auf DEFAULT Playlist
+
+  OK           starten/stoppen von Mehrfach-Tasten
+               (zusammengesetzt aus A,B,C,D,0-9,POWER,VOL+,VOL-,MENU,EPG,LOOP)
+
+                   * Zahl            Selektieren eines Tracks in der aktuellen Playlist
+                   * Buchst./Zahlen  Selektieren der Playlist 'bz'
+                       - mit dem Namen 'bz' oder
+                       - beginnend mit 'bz --' oder 'bz ~'
+                   * LOOP            Ein-/Ausschalten der Wiederholung der aktuellen Playlist
+                   * LOOP D          Ein-/Ausschalten der Zufallswiedergabe
+                   * POWER Zahl      Setzen eines Sleep Timers in Minuten
+                   * VOL+ VOL+       Lautstärke auf 100%
+                   * VOL+ VOL-       Lautstärke auf 50%
+                   * VOL- VOL-       Lautstärke auf  0%
+                   * MENU EPG        Ausdruck der Playlist(s) auf Drucker
+                   * MENU MENU       Ausdruck dieser Kurzhilfe
+                   * MENU MENU EPG   Ausdruck dieser Kurzhilfe und der Playlist(s) - doppelseitig
+
+Mehr Infos auf https://www.ziemski.net/rcmpd/
+EOF
+}
+
+#*********************************************************************
+# Define the keys of the remote controls.
+# Used for the creation of .lircrc (and as reference for humans...)
+# Need to match the remote names and the button names from lircd.conf!
+# Edit the current ones, add or replace with your own RC(s).
+#*********************************************************************
+
+define_remotes()
+{
+  REMOTES=(
+
+  [Pinnacle_RC1144201]="
+    mute power
+    menu tv epg
+    a b c d
+    vol+ vol-
+    pinnacle
+    ch+ ch-
+    ok
+    back loop
+    fullscreen
+    pause play stop
+    ffwd rew
+    skip+ skip-
+    rec
+    1 2 3 4 5 6 7 8 9 0
+    cancel
+  "
+
+  # The definition below uses an "aliasing" feature:
+  # If an RC sends a button X but you want rcmpd to behave like button Y
+  # then write X=Y
+
+  [DENON_RC_126]="
+    KEY_POWER
+    KEY_VOLUMEDOWN
+    KEY_VOLUMEUP
+    KEY_CHANNELUP=KEY_NEXT
+    KEY_CHANNELDOWN=KEY_PREVIOUS
+    KEY_SEARCH=KEY_SCREEN
+    KEY_MUTE=KEY_PAUSE
+    KEY_MODE=KEY_STOP
+  "
+
+  )
+}
+
+#*************************************************************
+# Check if the used remote controls are defined within lirc
+#*************************************************************
+
+check_remote_definition()
+{
+  [ -z "$1" ] && return 3
+
+  egrep "(name|NAME).*$1" $LIRCDCONF $LIRCDCONFDIR/*.conf > /dev/null
+  if [ $? -ne 0 ] ; then
+    echo "Attention: Remote '$1' not defined in $LIRCDCONF or $LIRCDCONFDIR !" >&2
+    return 2
+  else
+    echo -e "lirc definition for '$1' found.\n" >&2
+    return 0
+  fi
+}
+
+#******************************************************
+# Create the ~/.lircrc as configuration for irexec.
+# As connection to this script's features here.
+#******************************************************
+
+create_lircrc()
+{
+  if ! [ -f $LIRCDCONF ] ; then
+    echo "Error: No LIRC configuration '$LIRCDCONF' found!"
+    echo "Please check LIRC installation/configuration."
+    echo ""
+    return 1
+  fi
+
+  PROG="irexec"
+
+  declare -A REMOTES
+  define_remotes
+
+  for remote in ${!REMOTES[@]}
+  do
+    check_remote_definition $remote || continue
+    echo -e "Creating entries in $LIRCRC.\n" >&2
+
+    for dbutton in ${REMOTES[$remote]}
+    do
+      # The setting for IFS inline below seems not to be so temporary?!?!
+      # So we need to store/restore IFS explicitely.
+      OIFS=${IFS}
+      IFS="=" bta=($dbutton)
+      IFS=${OIFS}
+      button=${bta[0]}
+      cmd=${bta[-1]}
+
+      cat <<EOF
+begin
+    prog   = $PROG
+    remote = $remote
+    button = $button
+    config = $MYSELF_P $cmd
+    repeat = 0
+end
+EOF
+    done
+  done > $LIRCRC
+}
+
+#***********************************************************
+# Restart the lirc tool irexec - mapping the RC functions
+#***********************************************************
+
+restart_irexec()
+{
+  killall -u ${USER} irexec 2>/dev/null
+
+  if [ $? -ne 0 ] ; then
+    echo "irexec didn't run. Starting it now."
+  else
+    echo "Restarting irexec."
+  fi
+  /usr/bin/irexec --daemon $LIRCRC
+}
+
+#***********************************************************
+# Check the installation (prerequisites)
+#***********************************************************
+
+check_install()
+{
+  echo "*** Checking the installation ***"
+  ok=1
+
+  echo "Executables"
+  for prog in which grep cut sed sort awk wc tail basename date touch nl mpc
+  do
+    printf "  %-10s: " $prog
+    which $prog >/dev/null
+    if [ $? -ne 0 ] ; then
+      echo "not found. Please install/make accessible."
+      ok=0
+    else
+      echo "o.k."
+    fi
+  done
+
+  printf "  %-10s: " irexec
+  which irexec >/dev/null
+  if [ $? -ne 0 ] ; then
+    ok=0
+    echo "not found. Infrared RC won't work. Please check LIRC installation."
+    echo ""
+  else
+    echo "o.k."
+  fi
+
+  printf "  %-10s: " espeak
+  which espeak > /dev/null
+  if [ $? -ne 0 ] ; then
+    ok=0
+    echo "not found"
+    echo ""
+    echo "Since Text-to-speech is configured to '$TTS_TYPE' here:"
+    echo -e "    \c"
+    grep -nH "^TTS_TYPE" $MYSELF_P
+    if [ "$TTS_TYPE" == espeak ] ; then
+      echo "it probably won't work."
+    else
+      echo "that should be not problem."
+    fi
+  else
+    echo "o.k."
+  fi
+  echo ""
+
+  for prog in paps lp gs ps2pdf
+  do
+    printf "  %-10s: " $prog
+    which $prog >/dev/null
+    if [ $? -ne 0 ] ; then
+      echo "not found. Printing won't work."
+      ok=0
+    else
+      echo "o.k."
+    fi
+  done
+
+  echo "LIRC configuration"
+
+  printf "  %-20s: " $LIRCDCONF
+  if ! [ -f $LIRCDCONF ] ; then
+    ok=0
+    echo "not found! Please check LIRC installation/configuration."
+  else
+    echo "o.k."
+  fi
+
+  printf "  %-20s: " $LIRCRC
+  if ! [ -f $LIRCRC ] ; then
+    ok=0
+    echo "not found."
+    echo "                        Please create one, for example with '$MYSELF --createlirc'."
+  else
+    echo "o.k."
+  fi
+  echo ""
+
+  echo "Local storage"
+
+  for p in STATE_FILE SONGINFO_FILE
+  do
+    eval f=\$$p
+    printf "  %-26s: " $f
+    touch $f 2>/dev/null
+    if [ $? -ne 0 ] ; then
+      ok=0
+      echo -e "no write access. Please check the path and rights. Configured here: \c"
+      grep -nH "^$p" $MYSELF_P
+      echo ""
+    else
+      echo "o.k."
+    fi
+  done
+  echo ""
+
+  if [ $ok -eq 1 ] ; then
+    echo "No problems found so far."
+    echo ""
+  fi
+}
+
+#***********************************************************
+# Text To Speech with inofficial Google API
+#***********************************************************
+# Algorithm borrowed from:  (to workaround the 100 characters limit)
+#################################
+# Speech Script by Dan Fountain #
+# TalkToDanF@gmail.com #
+# http://danfountain.com/2013/03/raspberry-pi-text-to-speech/
+# blog.oscarliang.net/raspberry-pi-voice-recognition-works-like-siri/
+#################################
+#
+#***********************************************************
+
+tts_google()
+{
+  STRINGNUM=0
+
+  ary=($@)
+
+  for key in "${!ary[@]}"
+  do
+    SHORTTMP[$STRINGNUM]="${SHORTTMP[$STRINGNUM]} ${ary[$key]}"
+    LENGTH=$(echo ${#SHORTTMP[$STRINGNUM]})
+    if [[ "$LENGTH" -lt "100" ]]; then
+      SHORT[$STRINGNUM]=${SHORTTMP[$STRINGNUM]}
+    else
+      STRINGNUM=$(($STRINGNUM+1))
+      SHORTTMP[$STRINGNUM]="${ary[$key]}"
+      SHORT[$STRINGNUM]="${ary[$key]}"
+    fi
+  done
+
+  for key in "${!SHORT[@]}"
+  do
+    # echo "Playing line: $(($key+1)) of $(($STRINGNUM+1))"
+    # Wasn't able to get mplayer running with Google's files.
+    # mpg123 works, but:
+    # mpg123 fails with HifiBerry DAC and mono files  => --stereo
+    # Perhaps that is the reason for that strange sound at the end of each speech?
+    # Needs sudo here?!
+    sudo mpg123 --stereo -q "https://translate.google.com/translate_tts?tl=en&q=${SHORT[$key]}"
+  done
+}
+
+#***********************************************************
+# Text to speech
+#***********************************************************
+
+tts()
+{
+    echo "Trying to say: $@"
+
+    case $TTS_TYPE in
+      espeak)
+          if [ -x /usr/bin/espeak ] ; then
+            #todo: why is sudo needed here?
+            sudo /usr/bin/espeak $ESPEAK_OPTIONS "$@"   2>/dev/null
+          else
+            echo "Problem: espeak not found"
+          fi
+          ;;
+
+      google)
+          tts_google "$@"
+          ;;
+    esac
+}
+
+#**************************************************************************
+# Prepare TTS for MPD infos or simple text
+#**************************************************************************
+
+sayinfo()
+{
+ {  # group commands and execute in background (see closing curly brace)
+    # to be able to stop long speeches...
+
+  # Speak some text, the time or special MPD info via audio
+  #
+  # If MPD is currently playing, pause it and continue it after speech output.
+  #
+  # Usage:
+  #
+  #   sayinfo --mpd <mpd data>
+  #   sayinfo --time
+  #   sayinfo some text ...
+  #
+  #     --mpd  gives the following MPD data:
+  #        collection     -  collection of playlists
+  #        playlist       -  playlist info - as far as possible...
+  #        station|album  -  depending on source (file or stream)
+  #        track|title    -  current track's title
+  #        status         -  status of volume, repeat, random
+  #        volume         -  volume
+  #        repeat         -  status of repeat
+  #        random         -  status of random
+  #
+  #     --time  speaks the current time
+  #
+  #   if $is_silent == 1  audio is suppresses but prints the output to stdout
+
+  #--- espeak configuration -----------------------------------------------
+
+  # -v <voice name> # Use voice file of this name from espeak-data/voices
+  VOICE="-ven"   # or "-ven+f2" for a female voice
+
+  # -s <integer>    # Speed in words per minute, 80 to 450, default is 175
+  SPEED="-s 140"
+
+  # -g <integer>    # Word gap. Pause between words, units of 10mS at the default speed
+  GAP="-g 1"
+
+  # -a <integer>    # Amplitude, 0 to 200, default is 100; but make it mpd volume dependent
+  get_volume
+  vol=$?
+  AMPLITUDE="-a $vol"   # possibly there need to be some correction factor?
+
+  # -k <integer>    # Indicate capital letters with: 1=sound, 2=the word "capitals",
+  #                 # higher values indicate a pitch increase (try -k20).
+  CAPITALS="-k 20"
+
+  ESPEAK_OPTIONS="$VOICE $SPEED $GAP $AMPLITUDE $CAPITALS"
+  #------------------------------------------------------------------------
+
+  # Example data to distinguish files/streams
+  #
+  # == File ==
+  #
+  # $ mpc current
+  # Mumford & Sons - Ghosts That We Knew
+  # $ mpc -f "%artist% %title% %album% %track% %file%"
+  #
+  #   artist: Mumford & Sons
+  #   title:  Ghosts That We Knew
+  #   album:  Babel
+  #   track:  5
+  #   file:   NAS/hd1/CDs/flac/Mumfordandsons_babel/05 - Ghosts That We Knew.mp3
+  #
+  # == Stream ==
+  #
+  # $ mpc current
+  # Nature - SKY.FM - soothing sounds of nature music!: Llewellyn - Waters of Life
+  # $ mpc -f "%artist% %title% %album% %track% %file%"
+  #
+  #   artist:
+  #   title:  Llewellyn - Waters of Life
+  #   album:
+  #   track:
+  #   file:   http://pub5.sky.fm:80/sky_nature#Sky.fm - Nature
+
+  #------------------------------------------------------------------------
+
+  mstat=$(mpc | grep -e "^\[playing\]" -e "^\[paused\]" | cut -d " " -f 1)
+
+  [ $is_silent -eq 0 -a "$mstat" == "[playing]" ] && mpc -q pause
+
+  MSG=""
+
+  case "$1" in
+
+    --time) MSG="It's $(date "+%_H %_M") o'clock."
+            ;;
+
+    --mpd)
+           # todo: how to get it via single call?
+           # that doesn't work:
+           #set $(mpc -f '"%artist%" "%title%" "%album%" "%file%"' current)
+           # perhaps so:
+           #IFS="~"  read ARTIST TITLE ALBUM PLPOSITION FILE <<< $(mpc -f '%artist%~%title%~%album%~%position%~%file%' current)
+           #IFS="|" read TITLE ALBUM <<< $(mpc -f "%artist% - %title%#|%album%" current)
+
+         FILE=$(mpc -f %file% current)
+
+         if [[ $FILE =~ http[s]*:// ]] ; then
+           PLPOSITION=$(mpc -f %position% current)
+           TITLE=$(mpc -f %title% current)
+           STATION=$(echo "$FILE" | sed -e 's/^.*#//')
+           SRC="Station ${PLPOSITION}: . $STATION"
+         else
+           TITLE=$(mpc current)
+           ARTIST=$(mpc -f %artist% current)
+           ALBUM=$(mpc -f %album% current)
+           SRC="Album: ${ALBUM}"
+         fi
+
+
+         case "$2" in
+
+           collection)    MSG="Available playlists: $(mpc lsplaylists | LC_COLLATE=C sort -fb | awk '{printf "%d:\t%s: _.\n", NR, $0}')"
+                          ;;
+
+           playlist)      MSG="Playlist: ${playlist}: $(mpc playlist | wc -l): entries."
+                          #todo: more infos!
+                          ;;
+
+           station|album) [ -z "$mstat" ] && exit
+                          MSG="$SRC"
+                          ;;
+
+           track|title)   [ -z "$mstat" ] && exit
+                          MSG=$(echo "$TITLE" | sed -e 's/ - / . /g')
+                          ;;
+
+                          # volume:100%   repeat: on    random: off   single: off   consume: off
+                          # volume: 40%   repeat: off   random: off   single: off   consume: off
+
+                          # The tr command is needed to handle the missing space on "volume:100%"
+           state|status)  st=($(mpc | tail -1 | tr ':' ' '))
+                          # speak volume and status of repeat/random only
+                          MSG="Volume: ${st[1]}. Repeat: ${st[3]}. Random: ${st[5]}"
+                          ;;
+
+           volume)        st=($(mpc | tail -1 | tr ':' ' '))
+                          # speak volume only
+                          MSG="Volume: ${st[1]}"
+                          ;;
+
+           repeat)        st=($(mpc | tail -1 | tr ':' ' '))
+                          # speak status of repeat and single only
+                          MSG="Repeat: ${st[3]}. Single: ${st[7]}"
+                          ;;
+
+           random)        st=($(mpc | tail -1 | tr ':' ' '))
+                          # speak status of random only
+                          MSG="Random: ${st[5]}"
+                          ;;
+
+           *)             MSG="$(echo "$TITLE" | sed -e 's/ - / . /g') . $SRC"
+                          ;;
+         esac
+         ;;
+
+      *) MSG="$*"
+         ;;
+  esac
+
+  if [ -n "$MSG" ] ; then
+    if [ $is_silent -ne 0 ] ; then
+      echo "$MSG"
+    else
+      MSG=$(echo "$MSG" | sed -e 's/&/ and /g' -e 's/\~/-/')
+      tts "$MSG"
+    fi
+  fi
+
+  [ $is_silent -eq 0 -a "$mstat" == "[playing]" ] &&  mpc -q play
+ }&
+}
+
+
+#******************************************************
+# Get the current volume level from mpd as return code
+#******************************************************
+
+get_volume()
+{
+   stvol=($(mpc volume| tr ':' ' '))
+   return ${stvol[1]%\%}
+}
+
+#******************************************************************
+# Get position of current playlist (if possible) from available PLs
+# Note: return code position is 1-based! 0 for not found.
+#******************************************************************
+
+get_playlist_no()
+{
+  if [ -z "$playlist" ] ; then
+    return 0
+  fi
+  # set -x
+  # echo "${#playlists[@]}"
+  # echo "${playlists[@]}"
+
+  rc=0
+  for (( i=0 ; i<${#playlists[@]}; i++ ))
+  do
+    if [ $i -gt 254 ] ; then
+      echo "Sorry, only up to 255 playlists supported yet."
+      rc=$i
+      break
+    fi
+    if [ "$playlist" == "${playlists[$i]}" ] ; then
+      rc=$(( i + 1 ))
+    fi
+  done
+  return $rc
+}
+
+#***************************************
+# Save the progam's state on (RAM)-disk
+#***************************************
+
+save_state()
+{
+  (echo "volume=$volume"
+   echo "lastbtn=\"$btn\""
+   echo "compound=$compound"
+   echo "lasttime=$now"
+   echo "playlist=\"$playlist\""
+   echo "echocmd=$echocmd") > $STATE_FILE
+}
+
+#************************************************************************
+# List the current (or given) MPD playlist with track numbers.
+#
+# Used for printer output.
+#
+# If a playlist is given as parameter, MPD needs to load (switch to) it
+# to be able to list it!
+#************************************************************************
+
+list_playlist()
+{
+  if [ -n "$1" ] ; then
+    ## Load an optionally given playlist
+    # But first check whether it's existing...
+    mpc lsplaylists | grep "^$1\$" > /dev/null
+    if [ $? -ne 0 ] ; then
+      echo "Unknown playlist: '$1'"
+    else
+      mpc -q clear
+      mpc load "$1" | sed -e 's/^loading:/\*\*\*/' -e 's/$/ \*\*\*/'
+    fi
+    echo ""
+  else
+    ## or print current playlist
+    echo -e "*** Current playlist ***\n"
+  fi
+
+  ## format the input accordingly
+
+  # With streaming URLs mpc playlist gives (depending of opened (example lines 1-3) / not yet openend (lines 4..) state:
+  #
+  # Nature - SKY.FM - soothing sounds of nature music!: Echoes Of Nature - Bobwhite, Doves & Cardinals
+  # Chroma Nature: Nature - Ocean Waves
+  # Relaxation - SKY.FM - relaxing music for the mind and soul: G.E.N.E. - Flying Fish
+  # http://swr-mp3-s-swr3.akacast.akamaistream.net/7/203/137136/v1/gnl.akacast.akamaistream.net/swr-mp3-s-swr3#SWR3 (Stuttgart)
+  # http://gffstream.ic.llnwd.net/stream/gffstream_stream_wdr_einslive_a#WDR 1LIVE (Cologne)
+
+  mpc playlist | sed -e 's/.*#//'  -e 's/^\(.*\) - \(.*\) - .*:.*/\2 - \1/' -e 's/:.*//' | nl -s "   "
+}
+
+
+#***************************************************
+# Prepare the print of the available and the current MPD playlist
+#
+# The list is limited to 32 lines per page to have one sheet of paper only.
+# That might not be optimal for long lists (they are simply cut on the printout)...
+#
+#***************************************************
+
+prepare_print_playlists()
+{
+  PL=""
+  # or a given... (but that results in a switch to that one!)
+  #PL="B ~ Birgit's Radio"
+
+  #------------------------------------------------------------
+  # Some technical infos about printing here:
+  # =========================================
+  #
+  # enscript -t "Volumio Playlists" -G -U 2 -f Courier16
+  # => really nice, but enscript isn't able top handle UTF-8!
+  #
+  # So a possible solution is to recode the data before:
+  #
+  # recode ..latin1 | enscript -t "Volumio Playlists" -G -U 2 -f Courier16
+  #
+  # => But that only works with Latin1 or such, not with real unicode.
+  #
+  # Finally we can/should use paps, which handles UTF-8:
+  #
+  # paps --landscape --columns=2 --font=Courier16 --header --title "Volumio playlists" | lp
+  #
+  # Note: I patched paps to have a "--title" option for an individual title text.
+  #       ==> See my site for details.
+  #       But it works with an original paps as well, see below.
+  #------------------------------------------------------------
+
+  MAXLINES=32
+  MAXCHARS=60
+
+  echo -e "\n*** Available playlists ***\n"
+  mpc lsplaylists | LC_COLLATE=C sort -fb | head -$MAXLINES | cut -c 1-$MAXCHARS
+
+  # Form Feed (aka new page)
+  echo -e "\f"
+
+  list_playlist "$PL" | head -$MAXLINES | cut -c 1-$MAXCHARS
+}
+
+#***************************************************
+# Do the printing
+#***************************************************
+
+do_print()
+{
+  ok=1
+  for prog in paps lp
+  do
+    printf "  %-10s: " $prog
+    which $prog >/dev/null
+    if [ $? -ne 0 ] ; then
+      ok=0
+    else
+      echo "o.k."
+    fi
+  done
+
+  if [ $ok -eq 0 ] ; then
+    echo "Printing doesn't work. Programs lp or paps not found."
+    sayinfo "Printing doesn't work. Programs lp or paps not found."
+    return 1
+  fi
+
+  # Check if it's a patched paps:
+  paps -h | grep -- "--title" > /dev/null
+
+  if [ $? -eq 0 ] ; then
+    PTITLE1="--title Volumio+rcmpd---Manual"
+    PTITLE2='--title Volumio---Playlists'
+  else
+    PTITLE1=""
+    PTITLE2=""
+  fi
+
+  sayinfo "Printing infos."
+
+  rm -f $PRINTOUT
+
+  (
+     case "$1" in
+       KEYS)
+            help_keys${HELP_LANGUAGE} | paps --font="Monospace 10" --landscape --header $PTITLE1
+            ;;
+       ""|ALL)
+            #help_keys${HELP_LANGUAGE} | paps --font="Monospace 10" --landscape --header $PTITLE1
+            #doesn't work for merging here: echo "false 0 startjob pop"
+            #;&
+            # So we need a hack via Ghostscript to merge the two PS files:
+            # (from https://stackoverflow.com/questions/3444931/how-to-merge-two-postscript-files-together)
+            #
+            help_keys${HELP_LANGUAGE} | paps --font="Monospace 10" --landscape --header $PTITLE1 > /tmp/rcmpd_f1.ps
+            prepare_print_playlists $PTITLE0 "$PTITLE2" | paps --font="Arial 12" --landscape --columns=2 --header $PTITLE2 > /tmp/rcmpd_f2.ps
+            gs -q -o - -sDEVICE=pswrite /tmp/rcmpd_f1.ps /tmp/rcmpd_f2.ps
+            rm -f /tmp/rcmpd_f1.ps /tmp/rcmpd_f2.ps > /dev/null 2>&1
+            ;;
+
+       PLAYLISTS)
+            prepare_print_playlists $PTITLE0 "$PTITLE2" | paps --font="Arial 12" --landscape --columns=2 --header $PTITLE2
+            ;;
+       esac
+
+  ) | ps2pdf - $PRINTOUT && lp -o sides=two-sided-long-edge $PRINTOUT
+
+  if [ $? -ne 0 ] ; then
+    sayinfo "Something went wrong with printing."
+  fi
+}
+
+#********************************************************************
+# The commands used by the main assignment table in button_menu()
+#********************************************************************
+
+cmd_mute()
+{
+  get_volume
+  vol=$?
+  if [ "$vol" == 0 ] ; then
+    vol=${volume:=20}
+  else
+    volume=$vol
+    vol=0
+  fi
+  mpc volume $vol
+  [ $vol -eq 0 -a  $echocmd -eq 1 ] && sayinfo Muted.
+}
+
+cmd_volume_min()
+{
+  mpc volume 0
+  [ $echocmd -eq 1 ] && sayinfo --mpd volume
+}
+
+cmd_volume_mid()
+{
+  mpc volume 50
+  [ $echocmd -eq 1 ] && sayinfo --mpd volume
+}
+
+cmd_volume_max()
+{
+  mpc volume 100
+  [ $echocmd -eq 1 ] && sayinfo --mpd volume
+}
+
+cmd_volume_up()
+{
+  mpc volume +5
+  [ $echocmd -eq 1 ] && sayinfo --mpd volume
+}
+
+cmd_volume_down()
+{
+  mpc volume -5
+  [ $echocmd -eq 1 ] && sayinfo --mpd volume
+}
+
+#-----------------------------------------------------------------------
+
+cmd_play()
+{
+  mpc | grep -e "^\[paused\]"
+  if [ $? -eq 0 ] ; then
+    [ $echocmd -eq 1 ] && sayinfo Play
+    mpc play
+  else
+    mpc play
+    [ $echocmd -eq 1 ] && sayinfo Play
+  fi
+}
+
+cmd_stop()
+{
+  ps -ef | grep -v grep | grep -e espeak -e mpg123 > /dev/null
+  if [ $? -eq 0 ] ; then
+    echo "Trying to kill all TTS (espeak and/or mpg123)"
+    sudo killall espeak mpg123
+  else
+    mpc stop
+    [ $echocmd -eq 1 ] && sayinfo Stop
+  fi
+}
+
+cmd_pause()
+{
+  mpc | grep -e "^\[paused\]"
+  if [ $? -eq 0 ] ; then
+    [ $echocmd -eq 1 ] && sayinfo Unpause
+    mpc toggle
+  else
+    mpc toggle
+    [ $echocmd -eq 1 ] && sayinfo Pause
+  fi
+}
+
+cmd_toggle_repeat_single()
+{
+  mpc repeat
+  st=($(mpc | tail -1 | tr ':' ' '))
+  mpc single "${st[3]}"
+  [ $echocmd -eq 1 ] && sayinfo --mpd repeat
+}
+
+cmd_toggle_repeat_all()
+{
+  mpc repeat
+  st=($(mpc | tail -1 | tr ':' ' '))
+  mpc single off
+  [ $echocmd -eq 1 ] && sayinfo --mpd repeat
+}
+
+cmd_toggle_random()
+{
+  mpc random
+  [ $echocmd -eq 1 ] && sayinfo --mpd random
+}
+
+#-----------------------------------------------------------------------
+
+playlist_switch()
+{
+  chdef="$1"  # next/previous
+  # todo: Strange hack. Perhaps there's a better way?
+  OIFS=${IFS}
+  IFS=$'\n' playlists=($(mpc lsplaylists | LC_COLLATE=C sort -fb))
+  IFS=${OIFS}
+
+  mpc -q stop
+  mpc -q clear
+
+  if [ -n "$playlist" ] ; then
+    get_playlist_no
+    pln=$?
+
+    # Note: pln is 1-based! 0 for not found.
+    #       But the array is 0-based!
+
+    if [ $pln -eq 0 ] ; then
+    echo "PL not found!?"
+    else
+    if [ $chdef == "previous" ] ; then
+      msg="previous"
+      if [ $pln -gt 1 ] ; then
+        playlist="${playlists[$(( pln - 2 ))]}"
+      else
+        playlist="${playlists[-1]}"
+      fi
+    else
+      msg="next"
+      if [ $pln -lt ${#playlists[@]} ] ; then
+        playlist="${playlists[$pln]}"
+      else
+        playlist="${playlists[0]}"
+      fi
+    fi
+    fi
+  else
+    if [ $chdef == "previous" ] ; then
+      msg="previous"
+      playlist="${playlists[-1]}"
+    else
+      msg="next"
+      playlist="${playlists[0]}"
+    fi
+  fi
+  mpc load "$playlist"
+  [ $echocmd -eq 1 ] && sayinfo Loaded $msg playlist. ${playlist}.
+  mpc play
+}
+
+cmd_seek_forward()
+{
+  [ $echocmd -eq 1 ] && sayinfo Seek forward 30 seconds.
+  mpc seek +30
+}
+
+cmd_seek_backward()
+{
+  [ $echocmd -eq 1 ] && sayinfo Seek backward 30 seconds.
+  mpc seek -30
+}
+
+cmd_next_track()
+{
+  #todo: distinguish between channel and track
+  [ $echocmd -eq 1 ] && sayinfo Next channel.
+  mpc next
+}
+
+cmd_previous_track()
+{
+  $echocmd -eq 1 ] && sayinfo Previous channel.
+  mpc prev
+}
+
+choose_track()
+{
+  maxch=$(mpc playlist | wc -l)
+  if [ $1 -le $maxch ] ; then
+    [ $echocmd -eq 1 ] && sayinfo Switching to track $1.
+    mpc play $1
+  else
+    [ $echocmd -eq 1 ] && sayinfo No track $1 available.
+  fi
+}
+
+cmd_number()
+{
+  choose_track $btn
+}
+
+cmd_digit()
+{
+  btnx=${1:(-1)}
+  [ $btnx == 0 ] && btnx=10
+  choose_track $btnx
+}
+
+cmd_next_playlist()
+{
+  playlist_switch next
+}
+
+cmd_previous_playlist()
+{
+  playlist_switch previous
+}
+
+choose_playlist()
+{
+  npl=$(mpc lsplaylists | grep -e "^$1$" -e "^$1 *--"  -e "^$1 *~")
+  if [ -n "$npl" ] ; then
+    echo "Loading playlist $npl."
+    [ $echocmd -eq 1 ] && sayinfo Loading playlist: $npl.
+    mpc -q stop
+    mpc -q clear
+    mpc load "$npl"
+    mpc play
+    playlist="$npl"
+  else
+    echo "Playlist not found: '$1'"
+    [ $echocmd -eq 1 ] && sayinfo Playlist not found: $1.
+  fi
+}
+
+cmd_ABC()
+{
+  btnx=${1:(-1)}
+  choose_playlist $btnx
+}
+
+cmd_cancel()
+{
+  choose_playlist DEFAULT
+  mpc play
+}
+
+#-----------------------------------------------------------------------
+
+cmd_record()
+{
+  FILE=$(mpc -f %file% current)
+  if [[ $FILE =~ http[s]*:// ]] ; then
+    TITLE=$(mpc -f %title% current)
+  else
+    TITLE=$(mpc current)
+  fi
+
+  if [ -n "$TITLE" ] ; then
+    echo "$TITLE" >> $SONGINFO_FILE
+    [ $echocmd -eq 1 ] && sayinfo Saving info to file: ${TITLE}.
+  else
+    [ $echocmd -eq 1 ] && sayinfo Nothing to save to file.
+  fi
+}
+
+#-----------------------------------------------------------------------
+
+cmd_toggle_speech()
+{
+  if [ $echocmd -eq 0 ]; then
+    sayinfo Speaking commands now.
+    echocmd=1
+  else
+    sayinfo No longer speaking commands.
+    echocmd=0
+  fi
+}
+
+cmd_info_collection()
+{
+  sayinfo --mpd collection
+}
+
+cmd_info_playlist()
+{
+  sayinfo --mpd playlist
+}
+
+cmd_info_station()
+{
+  # station/album: depending on source (stream/file)
+  sayinfo --mpd station
+}
+
+cmd_info_track()
+{
+  sayinfo --mpd track
+}
+
+cmd_info_state()
+{
+  sayinfo --mpd state
+}
+
+cmd_info_time()
+{
+  sayinfo --time
+}
+
+#-----------------------------------------------------------------------
+
+cancel_any_shutdown()
+{
+  ps -ef | grep -v grep | grep "sudo shutdown -h" > /dev/null
+  if [ $? -eq 0 ] ; then
+    sudo shutdown -c Shutdown cancelled &
+    return 0
+  fi
+  return 1
+}
+
+#-----------------------------------------------------------------------
+
+poweroff_now()
+{
+  mpc stop
+  sayinfo Shutting system down.
+  cancel_any_shutdown
+  mpc stop
+  sudo shutdown -h now &
+}
+
+#-----------------------------------------------------------------------
+
+cmd_reboot()
+{
+  cancel_any_shutdown
+  sayinfo Rebooting system.
+  mpc stop
+  sudo shutdown -r now &
+}
+
+#-----------------------------------------------------------------------
+
+cmd_poweroff_or_cancel()
+{
+  cancel_any_shutdown
+  if [ $? -eq 0 ] ; then
+    sayinfo Shutdown cancelled.
+  else
+    sayinfo Shutting system down.
+    mpc stop
+    sudo shutdown -h now &
+  fi
+}
+
+#-----------------------------------------------------------------------
+
+set_sleep_timer()
+{
+  cancel_any_shutdown
+  echo "Shutdown in about $1 minutes"
+  sayinfo "Shutdown in about $1 minutes."
+
+  # in fact stop playback with that delay ...
+  echo "mpc stop" | at now + $1 minutes
+  # ... and shutdown a minute later...
+  sudo shutdown -h +$(( $1 + 1 )) &
+}
+
+#-----------------------------------------------------------------------
+
+call_extern()
+{
+  case "$1" in
+    A|B|C|D|KEY_A|KEY_B|KEY_C|KEY_D) ;&
+    0|1|2|3|4|5|6|7|8|9) ;&
+    KEY_0|KEY_1|KEY_2|KEY_3|KEY_4|KEY_5|KEY_6|KEY_7|KEY_8|KEY_9)
+
+       if [ -x ${MYSELF_P}.$1 ] ; then
+         sayinfo "Executing external command $1."
+         echo "Executing external command '${MYSELF_P}.$1'."
+         INFO=$(grep "^#INFO:" ${MYSELF_P}.$1 | cut -c 7-)
+         echo $INFO
+         sayinfo $INFO
+         ${MYSELF_P}.$1
+       else
+         echo "ERROR: External command not found: '${MYSELF_P}.$1'."
+       fi
+       ;;
+
+    *) echo "Invalid MENU option."
+  esac
+}
+
+#-----------------------------------------------------------------------
+
+handle_compounds()
+{
+  if [ $compound -eq 0 ] ; then
+    echo "Starting key compounding..."
+    compound=1
+  else
+    if [ $intime -eq 1 ] ; then
+      echo "Trying to execute compound key $lastbtn now."
+
+      # Choose track if digits only
+      if [ $lastbtn -eq $lastbtn 2>/dev/null ] ; then
+        choose_track $lastbtn
+      else
+        # Choose playlist if digits and ABCD only, starting with a letter ABCD
+        if [[ $lastbtn =~ ^[ABCD][ABCD0-9]*$ ]] ; then
+          choose_playlist $lastbtn
+        else
+          # else check for POWER command as itself or as sleep timer
+          if [[ $lastbtn =~ ^POWER ]] ; then
+            arg=$(echo "$lastbtn" | cut -c 6-)
+            case "$arg" in
+                   "") cmd_poweroff_or_cancel
+                       ;;
+                 LOOP) cmd_reboot
+                       ;;
+              0|POWER) poweroff_now
+                       ;;
+                    *) # if arg is a number:
+                       if [ $arg -eq $arg 2>/dev/null ] ; then
+                         set_sleep_timer $arg
+                       fi
+                       ;;
+            esac
+          else
+            if [[ $lastbtn =~ ^MENU ]] ; then
+              arg=$(echo "$lastbtn" | cut -c 5-)
+              case $arg in
+                A|B|C|D|KEY_A|KEY_B|KEY_C|KEY_D) ;&
+                0|1|2|3|4|5|6|7|8|9) ;&
+                KEY_0|KEY_1|KEY_2|KEY_3|KEY_4|KEY_5|KEY_6|KEY_7|KEY_8|KEY_9)
+                   call_extern $arg
+                   ;;
+                EPG) do_print PLAYLISTS
+                     ;;
+                MENU) do_print KEYS
+                      ;;
+                EPGMENU|MENUEPG) do_print ALL
+                                 ;;
+              esac
+            else
+              case $lastbtn in
+                LOOP)     cmd_toggle_repeat_all ;;
+                LOOPD)    cmd_toggle_random ;;
+                VOL+VOL+) cmd_volume_max ;;
+                VOL-VOL-) cmd_volume_min ;;
+                VOL+VOL-|VOL-VOL+) cmd_volume_mid ;;
+              esac
+            fi
+          fi
+        fi
+      fi
+      compound=0
+    else
+      if [ "$lastbtn" != "OK" ] ; then
+        echo "Timeout for compound reached. Doing nothing"
+        compound=0
+      fi
+    fi
+  fi
+}
+
+#-----------------------------------------------------------------------
+
+build_compound()
+{
+  # only allow selected buttons to build a compound key
+
+  case $btn in
+
+    POWER|KEY_POWER) ;&
+    VOL+|VOL-) ;&
+    MENU) ;&
+    EPG) ;&
+    LOOP) ;&
+    A|B|C|D|KEY_A|KEY_B|KEY_C|KEY_D) ;&
+    0|1|2|3|4|5|6|7|8|9) ;&
+    KEY_0|KEY_1|KEY_2|KEY_3|KEY_4|KEY_5|KEY_6|KEY_7|KEY_8|KEY_9)
+
+        [ "$lastbtn" == "OK" ] && lastbtn=""
+        btn="${lastbtn}${btn}"
+        ;;
+
+    *)  if [[ $btn =~ ^[0-9]+$ ]] ; then
+          [ "$lastbtn" == "OK" ] && lastbtn=""
+          btn="${lastbtn}${btn}"
+        else
+          echo "$btn is not valid for compounding."
+
+          #echo "Ignored."
+          #btn="$lastbtn"
+          ## or
+          echo "Stopping key collection."
+          compound=0
+          #button_menu
+          return 1
+        fi
+        ;;
+  esac
+}
+
+#-----------------------------------------------------------------------
+
+button_menu()
+{
+  case "$btn" in
+    #-------------------------------------------------------------
+    # The assignments of RC buttons to commands in this program.
+    # Here you can do your "setup".
+    #-------------------------------------------------------------
+
+    MUTE|KEY_MUTE)            cmd_mute ;;
+    VOL+|KEY_VOLUMEUP)        cmd_volume_up ;;
+    VOL-|KEY_VOLUMEDOWN)      cmd_volume_down ;;
+
+    PLAY|KEY_PLAY)            cmd_play ;;
+    STOP|KEY_STOP)            cmd_stop ;;
+    PAUSE|KEY_PAUSE)          cmd_pause ;;
+    LOOP|KEY_MEDIA_REPEAT)    cmd_toggle_repeat_single ;;
+
+    FFWD)                     cmd_seek_forward ;;
+    REW)                      cmd_seek_backward ;;
+    SKIP+|KEY_NEXT)           cmd_next_track ;;
+    SKIP-|KEY_PREVIOUS)       cmd_previous_track ;;
+    0|1|2|3|4|5|6|7|8|9)      cmd_digit $btn ;;
+    KEY_0|KEY_1|KEY_2|KEY_3|KEY_4|KEY_5|KEY_6|KEY_7|KEY_8|KEY_9)  cmd_digit $btn ;;
+    CH+|KEY_CHANNELUP)        cmd_next_playlist ;;      #todo: what is UP/DOWN/+/- here???
+    CH-|KEY_CHANNELDOWN)      cmd_previous_playlist ;;  #      numerically or "optically" in a vertical list?
+    A|B|C|KEY_A|KEY_B|KEY_C)  cmd_ABC $btn ;;
+
+    REC|RECORD|KEY_RECORD)    cmd_record ;;
+
+    MENU|KEY_MENU)            cmd_toggle_speech ;;
+
+    EPG|KEY_EPG)              cmd_info_collection ;;  # of playlists
+    D|KEY_D)                  cmd_info_playlist ;;    # current playlist
+    BACK|KEY_BACK)            cmd_info_station ;;     # respective "album"
+    FULLSCREEN|KEY_SCREEN)    cmd_info_track ;;
+    PINNACLE)                 cmd_info_state ;;
+    TV|KEY_TV)                cmd_info_time ;;
+
+    CANCEL)                   cmd_cancel ;;
+    POWER|KEY_POWER)          cmd_poweroff_or_cancel ;;  # shutdown / cancel delayed shutdown
+    #-------------------------------------------------------------
+
+    *)  if [[ $btn =~ ^[0-9]+$ ]] ; then
+          cmd_number $btn
+        else
+          echo "Unknown button/command"
+          [ $echocmd -eq 1 ] && sayinfo Unknown key.
+        fi
+        ;;
+  esac
+}
+
+
+#===============================================================================
+#===============================================================================
+# Main program
+#===============================================================================
+#===============================================================================
+
+#----------------------------------------------------------------
+# You might want so set the language for the short help text.
+#   Default: English
+#   Additionally available: DE
+# (see the help..() functions at top of this script)
+#
+# Add a line like:  export RCMPD_LANGUAGE=DE
+# to your ~/.bashrc file
+#----------------------------------------------------------------
+
+case "${RCMPD_LANGUAGE}" in
+  DE) HELP_LANGUAGE="_DE"
+      ;;
+   *) HELP_LANGUAGE=""
+      ;;
+esac
+
+MYSELF_P=$0
+MYSELF=$(basename $0)
+
+# save state in ramdisk (no need to keep on reboot)
+STATE_FILE=/run/shm/.${MYSELF}_state
+
+PRINTOUT=/tmp/rcmpd-printout.pdf
+
+# lirc
+LIRCDCONF=/etc/lirc/lircd.conf
+LIRCDCONFDIR=/etc/lirc/lircd.conf.d
+LIRCRC=~/.lircrc
+
+# where to save the infos about a song (see cmd_record())
+SONGINFO_FILE=~/rcmpd.record
+
+# max. interval for multiple keystroke in seconds
+MAXSEC=5
+
+#----------------------------------------------------------------
+# text to speech config
+#
+# The sound quality of Google TTS API is better than with espeak,
+# but in combination with mpg123 as player there is a strange burp on every speech's end?!
+# todo: find the reason for that...
+# And you need to be online to use that Google service.
+#
+# espeak instead is offline/local. My favourite here.
+
+#TTS_TYPE="google"
+TTS_TYPE="espeak"
+
+#===============================================================================
+
+if [ $# -eq 0 -o "$1" == "-h" ]; then
+  help_usage${HELP_LANGUAGE}
+  help_keys${HELP_LANGUAGE}
+  exit
+fi
+
+#------------
+
+# check for special configuration options. Execute and exit.
+
+case $1 in
+
+  --restartirexec)
+
+    restart_irexec
+    exit
+    ;;
+
+  --createlircrc)
+
+    rc=0
+    if [ -f $LIRCRC ] ; then
+      echo "Attention: File '$LIRCRC' already existing!"
+      ls -l $LIRCRC
+      echo "Cancelling!"
+      rc=1
+    else
+
+      create_lircrc
+
+      if [ -f $LIRCRC ] ; then
+        echo "File '$LIRCRC' created:"
+        ls -l $LIRCRC
+        rc=0
+      else
+        echo "Problems occured..."
+        rc=2
+      fi
+    fi
+    exit $rc
+    ;;
+
+  --checkinstall|--checkinstallation)
+
+    check_install
+    exit
+    ;;
+
+  --showsonginfos)
+
+    echo "------------------------------------"
+    echo "Songinfo file: $SONGINFO_FILE"
+    echo "------------------------------------"
+    [ -f $SONGINFO_FILE ] && cat $SONGINFO_FILE
+    exit
+    ;;
+
+  --listplaylists)
+
+    prepare_print_playlists "$2"
+    exit
+    ;;
+
+esac
+
+#--------------------------------------------------------------------------
+
+is_silent=0
+if [ $1 == -s ] ; then
+  is_silent=1
+  shift
+fi
+
+# just for debugging:
+#(echo "$(date)   $1") >> ~/rcmpd.log
+
+playlist=""
+intime=1
+echocmd=0
+compound=0
+now=$(date +%s)
+
+# read from state file
+[ -f $STATE_FILE ] && . $STATE_FILE
+
+# Single button: Check the time difference to the last call
+# Multiple button call: No checking needed. Reset possible compound.
+
+if [ $# -eq 1 ] ; then
+  if [ -n $lasttime ]; then
+    diff=$(( now - lasttime ))
+    if [ $diff -gt $MAXSEC ]; then
+      intime=0
+    fi
+  fi
+else
+  intime=1
+  compound=0
+fi
+
+# loop over given button(s) in this call
+for btn in $*
+do
+  btn=${btn^^}   # uppercase
+
+  case $btn in
+
+    OK|KEY_OK)  handle_compounds
+                ;;
+
+    *)  if [ $compound -eq 0 ] ; then
+          button_menu
+        else
+          if [ $intime -eq 1 ] ; then
+            build_compound
+            if [ $? -ne 0 ] ; then
+              [ $echocmd -eq 1 ] && sayinfo Invalid key sequence.
+              break
+            fi
+          else
+            echo "Stopping any key collection..."
+            compound=0
+            button_menu
+          fi
+        fi
+        ;;
+  esac
+  lastbtn="$btn"
+done
+
+save_state
+
+#===============================================================================
+
