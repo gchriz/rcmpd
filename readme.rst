@@ -16,7 +16,7 @@ Some documentation is included in the script itself. Much more in the enclosed f
 Those .rst files are formatted in `reStructuredText`_, if anyone is wondering.
 They are used to automatically generate the html files for my site as well.
 
-So the complete infos are available on my *rcmpd* site: http://ziemski.net/rcmpd/.
+So the complete infos are available on my *rcmpd* site: https://ziemski.net/rcmpd/.
 
 
 .. _MPD:          https://www.musicpd.org/
