@@ -5,7 +5,7 @@
 #         Some playlist handling included.
 #
 #                                           Christian Ziemski 16.03.2014
-#                                                             13.05.2020
+#                                                             06.12.2021
 #
 #-------------------------------------------------------------------------
 
@@ -174,10 +174,12 @@ EOF
 }
 
 #*********************************************************************
-# Define the keys of the remote controls.
+# You need to define the keys of your remote controls here!
+#
 # Used for the creation of .lircrc (and as reference for humans...)
-# Need to match the remote names and the button names from lircd.conf!
-# Edit the current ones, add or replace with your own RC(s).
+# Need to match the remote's names and the button names from the files
+# /etc/lirc/lircd.conf and/or /etc/lirc/lircd.conf.d/*.conf!
+# Edit the current ones below, add or replace with your own RC(s).
 #*********************************************************************
 
 define_remotes()
@@ -260,7 +262,7 @@ create_lircrc()
   for remote in ${!REMOTES[@]}
   do
     check_remote_definition $remote || continue
-    echo -e "Creating entries in $LIRCRC.\n" >&2
+    echo -e "Creating entries for remote $remote in $LIRCRC.\n" >&2
 
     for dbutton in ${REMOTES[$remote]}
     do
