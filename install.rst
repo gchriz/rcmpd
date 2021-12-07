@@ -1,14 +1,16 @@
 Hardware requirements
 =====================
 
-* computer running an operating system hosting `MPD`_, `LIRC`_ and bash - that is usually a kind of UNIX/Linux
+* a computer running an operating system hosting `MPD`_, `LIRC`_ and Bash - that is usually some flavour of UNIX/Linux
 
-* infrared receiver connected to that computer
-    The IR detector (e.g. Vishay TSOP31238, less than 1,- €) is connected to my Pi's GPIO
+* an infrared receiver connected to that computer
 
-* IR remote control - supported by LIRC_
+    * via GPIO: in my case it's an IR detector (e.g. Vishay TSOP31238, less than 1,- €)
+    * or via USB (not in this description here, but probably working the same way)
 
-* optionally a printer
+* an IR remote control - supported by LIRC_
+
+* and optionally a printer
 
 
 .. _MPD:  https://www.musicpd.org/
@@ -19,15 +21,14 @@ Hardware requirements
 Software requirements
 =====================
 
+* *mpd*  configured and running
 
-* mpd  configured and running
+* *mpc*  standard CLI client for sending commands to mpd
 
-* mpc  standard CLI client for sending commands to mpd
-
-* lirc running and configured (more details in the LIRC section below)::
+* *lircd* running and configured (more details in the LIRC section below)::
 
    * /etc/lirc/lirc_options.conf    driver and device configuration.
-   * /etc/lirc/lircd.conf           main config file. Just includes *.conf files
+   * /etc/lirc/lircd.conf           main config file. Just includes further *.conf files
    * /etc/lirc/lircd.conf.d/*.conf  defined remote control(s)
                                     (downloaded from http://lirc.sourceforge.net/remotes/
                                     or recorded with irrecord -l)
@@ -68,12 +69,20 @@ Installation
 
 #. `Install-and-configure-LIRC-for-your-RC`_  (see below)
 
-#. Create an appropriate ~/.lircrc for handling the RC commands
+#. in file *rcmpd* itself
 
-   | It needs to match your RC and the commands in *rcmpd*.
-   | It's possible to create it manually, but it's easier to use *rcmpd --createlircrc*.
+   * in function *define_remotes()* adapt the keys of your remote control(s) you want to use
+   * in function *help_keys()* adapt the help text describing the keys
+   * in function *button_menu()* optionally adapt to your needs (and key names...)
 
-#. (Re)start irexec to let it know about the new lircrc: *rcmpd --restartirexec*
+#. Create an appropriate *~/.lircrc* file for handling the RC commands
+
+   | It needs to match your RC (name and buttons) and the commands in *rcmpd*.
+   | It's possible to create it manually, but it's easier to use
+
+       *rcmpd --createlircrc*
+
+#. (Re)start irexec to let it know about the new ~/.lircrc: *rcmpd --restartirexec*
 
 #. Test it in your shell by *rcmpd <command>* with <command> being any of the defined commands above.
 

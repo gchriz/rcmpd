@@ -1,10 +1,13 @@
 Example function assignment on real remote controls
 ===================================================
 
-Here the assignments I configured for my IR Remote Controls as simple description:
+This topic is showing the assignments I configured for my own IR Remote Controls.
 
-* First an RC with many buttons and a complete function assignment
-* Second a much simpler RC with only basic functions
+That is a simple text description here, not the configuration itself!
+More about the real configuration follows.
+
+1. an RC with many buttons and a complete function assignment
+2. a much simpler RC with only basic functions
 
 Both can be used in parallel of course.
 

@@ -1,16 +1,16 @@
 How it works - technically
 ==========================
 
-Here I'll try to describe in easy words how the parts are playing together.
-More detailed infos are shown in the installation section.
+Here I would like to describe how the parts are playing together.
+Additional infos are shown in the installation section.
 
-1. First there is the software LIRC. It knows about
+1.  First there is the software LIRC_. It
 
-    * the codes the remote control sends (lircd.conf or lircd.conf.d/\*.conf)
+    * knows about the codes the remote control sends
 
-    and listens to the IR receiver all the time when started.
+    * and listens to the IR receiver all the time when started.
 
-    In LIRC's configuration file(s) lircd.conf.d/\*.conf there are the used remote control(s) defined.
+    In LIRC's configuration file(s) *lircd.conf* and/or preferred *lircd.conf.d/\*.conf* there are the used remote control(s) defined.
 
     Shortened example::
 
@@ -25,18 +25,20 @@ More detailed infos are shown in the installation section.
                   mute                     0x6E1E
                   stop                     0x6E2B
                   play                     0x6ED1
+                  pause                    0x6E2C
                   ...
 
     You can see the name of the RC and some of the known buttons.
 
 
-2. LIRC provides - beneath others - a simple program *irexec*.
+
+2.  LIRC provides - beneath others - a simple program *irexec*.
 
     *irexec* is able to communicate with the above running lircd and gets infos about a pressed button.
 
-    To know what to do with that button info it has a configuration file too: .lircrc.
+    To know what to do with that button info it has a configuration file too: *.lircrc*.
 
-    That configuration maps got button-presses to actions, for example starting a program.
+    That configuration file maps button-presses to actions, for example starting a program.
 
     In my case I map all buttons to *rcmpd* - with an appropriate parameter to distinguish them.
 
@@ -58,14 +60,76 @@ More detailed infos are shown in the installation section.
             repeat = 0
         end
 
-    You can see the matching name of the RC and the matching buttons as well.
+    You can see the matching name of the RC(!) and the matching buttons as well.
 
     So on every button press *rcmpd* gets called with the appropriate function as parameter.
+
+    That file can be crafted manually or automaticall, described a bit later.
 
     To get this working *irexec* needs to run in background and wait for button infos.
 
 
-3. Finally within *rcmpd* there is a mapping table from "button" to internal function where the commands are executed then::
+3.  Finally within *rcmpd* there is a table or block for every used remote control.
+
+    **This is your individual setup - part 1**
+
+    Example::
+
+		#*********************************************************************
+		# You need to define the choosen keys of your remote controls here!
+		#
+		# Used for the creation of .lircrc (and as reference for humans...)
+		#
+		# Need to match the remote's names and the button names from the files
+		# /etc/lirc/lircd.conf and/or /etc/lirc/lircd.conf.d/*.conf!
+		# Edit the current ones below, add or replace with your own RC(s).
+		#*********************************************************************
+
+		define_remotes()
+		{
+		  REMOTES=(
+
+		  [Pinnacle_RC1144201]="
+			mute power
+			menu tv epg
+			a b c d
+			vol+ vol-
+			pinnacle
+			ch+ ch-
+			ok
+			back loop
+			fullscreen
+			pause play stop
+			ffwd rew
+			skip+ skip-
+			rec
+			1 2 3 4 5 6 7 8 9 0
+			cancel
+		  "
+
+		  # The definition below uses an "aliasing" feature:
+		  # If an RC sends a button X but you want rcmpd to behave like button Y
+		  # then write X=Y
+
+		  [DENON_RC_126]="
+			KEY_POWER
+			KEY_VOLUMEDOWN
+			KEY_VOLUMEUP
+			KEY_CHANNELUP=KEY_NEXT
+			KEY_CHANNELDOWN=KEY_PREVIOUS
+			KEY_SEARCH=KEY_SCREEN
+			KEY_MUTE=KEY_PAUSE
+			KEY_MODE=KEY_STOP
+		  "
+
+		  )
+		}
+
+    Later on in *rcmpd* there is function *button_menu()*
+
+    **That is your individual setup - part 2 - if really needed**
+
+    There are the mappings from "button" to internal function where the commands are executed then::
 
       #-------------------------------------------------------------
       # The assignments of RC buttons to commands in this program.

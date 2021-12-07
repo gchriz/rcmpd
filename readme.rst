@@ -9,9 +9,9 @@ Some documentation is included in the script itself. Much more in the enclosed f
 
 * features.rst
 * example_ir_remotes.rst
-* usage.rst
-* install.rst
 * how_it_works.rst
+* install.rst
+* usage.rst
 
 Those .rst files are formatted in `reStructuredText`_, if anyone is wondering.
 They are used to automatically generate the html files for my site as well.

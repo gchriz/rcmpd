@@ -1,9 +1,9 @@
 Usage
 =====
 
-*rcmpd* is easy to call:
+*rcmpd* is easy to call.
 
-The first one is the normal operation format and the others are for installation/configuration purposes::
+The first iexample is the normal operation format and the others are for installation/configuration purposes::
 
   rcmpd <command> ...     manages a command, e.g. from an infrared RC buttonpress
 
@@ -14,6 +14,3 @@ The first one is the normal operation format and the others are for installation
   rcmpd --listplaylists   lists all playlists and the contents of current one
 
   rcmpd                   without any parameters this usage info and a short summary of keys is shown
-
-| For the commands see in the section `Example function assignment on real remote controls`_.
-| The installation is described in the installation section.
